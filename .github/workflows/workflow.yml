@@ -31,6 +31,9 @@ jobs:
         run: |
           cp .env.example .env
           php artisan key:generate
+          
+      - name: Check PHP code style
+        run: vendor/bin/pint --test
 
       - name: Run Laravel tests
         run: php artisan test
