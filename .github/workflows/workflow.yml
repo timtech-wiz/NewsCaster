@@ -120,3 +120,20 @@ jobs:
           path: build/test-results/junit.xml
           if-no-files-found: warn
           retention-days: 7
+
+  
+  deploy-staging:
+    name: Simulate staging deployment
+    needs: [code-quality, integration-tests]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Simulate deployment
+        run: |
+          echo "All CI checks passed."
+          echo "Preparing Laravel application for staging..."
+          echo "Deploying application to staging..."
+          echo "Staging deployment simulation completed."
