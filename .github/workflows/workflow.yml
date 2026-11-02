@@ -13,6 +13,29 @@ jobs:
   laravel-tests:
     runs-on: ubuntu-latest
 
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: laravel_ci
+          POSTGRES_USER: laravel
+          POSTGRES_PASSWORD: secret
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DB_CONNECTION: pgsql
+      DB_HOST: 127.0.0.1
+      DB_PORT: 5432
+      DB_DATABASE: laravel_ci
+      DB_USERNAME: laravel
+      DB_PASSWORD: secret
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -21,7 +44,7 @@ jobs:
         uses: shivammathur/setup-php@v2
         with:
           php-version: '8.5'
-          extensions: mbstring, pdo_sqlite
+          extensions: mbstring, pdo_pgsql
           coverage: none
 
       - name: Install Composer dependencies
@@ -38,8 +61,8 @@ jobs:
       - name: Run PHPStan analysis
         run: vendor/bin/phpstan analyse --no-progress
 
+      - name: Run database migrations
+        run: php artisan migrate --force
+
       - name: Run Laravel tests
         run: php artisan test
-        env:
-          DB_CONNECTION: sqlite
-          DB_DATABASE: ':memory:'
