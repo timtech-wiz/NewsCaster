@@ -106,5 +106,17 @@ jobs:
       - name: Run database migrations
         run: php artisan migrate --force
 
+      - name: Prepare test report directory
+        run: mkdir -p build/test-results
+
       - name: Run Laravel tests
-        run: php artisan test
+        run: vendor/bin/phpunit
+
+      - name: Upload PHPUnit test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: phpunit-test-report
+          path: build/test-results/junit.xml
+          if-no-files-found: warn
+          retention-days: 7
