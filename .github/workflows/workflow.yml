@@ -10,7 +10,47 @@ on:
       - main
 
 jobs:
-  laravel-tests:
+
+  code-quality:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.5'
+          extensions: mbstring
+          coverage: none
+
+      - name: Cache Composer dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/composer/files
+          key: composer-quality-${{ runner.os }}-${{ hashFiles('**/composer.lock') }}
+          restore-keys: |
+            composer-quality-${{ runner.os }}-
+
+      - name: Install Composer dependencies
+        run: composer install --prefer-dist --no-interaction --no-progress
+
+      - name: Check PHP code style
+        run: vendor/bin/pint --test
+
+      - name: Cache PHPStan results
+        uses: actions/cache@v4
+        with:
+          path: storage/framework/cache/phpstan
+          key: phpstan-${{ runner.os }}-${{ hashFiles('composer.lock', 'phpstan.neon') }}
+          restore-keys: |
+            phpstan-${{ runner.os }}-
+
+      - name: Run PHPStan analysis
+        run: vendor/bin/phpstan analyse --no-progress
+
+  integration-tests:
     runs-on: ubuntu-latest
 
     services:
@@ -47,19 +87,21 @@ jobs:
           extensions: mbstring, pdo_pgsql
           coverage: none
 
+      - name: Cache Composer dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/composer/files
+          key: composer-tests-${{ runner.os }}-${{ hashFiles('**/composer.lock') }}
+          restore-keys: |
+            composer-tests-${{ runner.os }}-
+
       - name: Install Composer dependencies
-        uses: ramsey/composer-install@v3
+        run: composer install --prefer-dist --no-interaction --no-progress
 
       - name: Prepare Laravel environment
         run: |
           cp .env.example .env
           php artisan key:generate
-
-      - name: Check PHP code style
-        run: vendor/bin/pint --test
-
-      - name: Run PHPStan analysis
-        run: vendor/bin/phpstan analyse --no-progress
 
       - name: Run database migrations
         run: php artisan migrate --force
