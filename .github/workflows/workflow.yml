@@ -121,19 +121,94 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
 
-  
-  deploy-staging:
-    name: Simulate staging deployment
-    needs: [code-quality, integration-tests]
+  frontend-build:
+    name: Build frontend assets
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Simulate deployment
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Build frontend assets
+        run: npm run build
+
+  
+  deploy-staging:
+    name: Deploy to staging
+    needs: [code-quality, integration-tests, frontend-build]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: staging
+
+    steps:
+      - name: Configure SSH
+        env:
+          STAGING_SSH_KEY: ${{ secrets.STAGING_SSH_KEY }}
+          STAGING_KNOWN_HOSTS: ${{ secrets.STAGING_KNOWN_HOSTS }}
         run: |
-          echo "All CI checks passed."
-          echo "Preparing Laravel application for staging..."
-          echo "Deploying application to staging..."
-          echo "Staging deployment simulation completed."
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+
+          printf '%s\n' "$STAGING_SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+
+          printf '%s\n' "$STAGING_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Deploy application
+        env:
+          STAGING_HOST: ${{ secrets.STAGING_HOST }}
+          STAGING_USER: ${{ secrets.STAGING_USER }}
+        run: |
+          ssh -i ~/.ssh/id_ed25519 \
+            -o IdentitiesOnly=yes \
+            "$STAGING_USER@$STAGING_HOST" 'bash -se' <<'REMOTE'
+              set -euo pipefail
+
+              cd /var/www/news-casting
+
+              if [ -n "$(git status --porcelain)" ]; then
+                  echo "Deployment aborted: working tree is not clean."
+                  exit 1
+              fi
+
+              echo "Fetching latest application code..."
+              git pull --ff-only origin main
+
+              echo "Installing production PHP dependencies..."
+              composer install --no-dev --prefer-dist --no-interaction --optimize-autoloader
+
+              echo "Installing frontend dependencies..."
+              npm ci
+
+              echo "Building frontend assets..."
+              npm run build
+
+              echo "Running database migrations..."
+              php artisan migrate --force
+
+              echo "Clearing old Laravel caches..."
+              php artisan optimize:clear
+
+              echo "Building Laravel configuration cache..."
+              php artisan config:cache
+
+              echo "Checking application HTTP response..."
+              curl --fail --silent --show-error \
+                  -H "Host: 193.123.191.202" \
+                  http://127.0.0.1/ \
+                  -o /dev/null
+
+              echo "Application health check passed."
+
+              echo "Staging deployment completed."
+          REMOTE
